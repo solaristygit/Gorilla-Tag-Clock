@@ -1,4 +1,3 @@
-```csharp
 using System;
 using BepInEx;
 using UnityEngine;
@@ -9,172 +8,194 @@ namespace GorillaTagClock
     [BepInPlugin(
         "com.gorillatagclock.localclock",
         "GorillaTagClock",
-        "1.0.0"
+        "3.0.0"
     )]
     public class GorillaTagClockPlugin : BaseUnityPlugin
     {
         private GameObject clockObject;
         private Text clockText;
 
-        private float updateTimer;
-
-        // Position of the clock next to the wardrobe.
-        private readonly Vector3 clockPosition =
-            new Vector3(0.35f, 0.25f, 0f);
+        private float timer;
 
         private void Awake()
         {
             Logger.LogInfo(
-                "GorillaTagClock loaded!"
+                "[GorillaTagClock] PLUGIN LOADED"
             );
         }
 
         private void Start()
         {
-            // Wait for the cosmetics area to load,
-            // then keep checking until we find it.
-            InvokeRepeating(
-                nameof(TryCreateClock),
-                3f,
+            Logger.LogInfo(
+                "[GorillaTagClock] Starting clock..."
+            );
+
+            Invoke(
+                nameof(CreateClock),
                 5f
             );
         }
 
-        private void TryCreateClock()
+        private void CreateClock()
         {
-            // Don't create multiple clocks.
             if (clockObject != null)
                 return;
 
-            GameObject wardrobe = FindWardrobe();
+            Camera cam = Camera.main;
 
-            if (wardrobe == null)
+            if (cam == null)
             {
-                Logger.LogInfo(
-                    "GorillaTagClock: Waiting for wardrobe..."
+                Logger.LogError(
+                    "[GorillaTagClock] Main camera not found."
                 );
 
                 return;
             }
 
-            CreateClock(wardrobe.transform);
-        }
+            Logger.LogInfo(
+                "[GorillaTagClock] Camera found."
+            );
 
-        private GameObject FindWardrobe()
-        {
-            string[] possibleNames =
-            {
-                "Wardrobe",
-                "CosmeticWardrobe",
-                "CosmeticsWardrobe",
-                "Cosmetics",
-                "CosmeticStand",
-                "CosmeticStandManager"
-            };
-
-            foreach (string name in possibleNames)
-            {
-                GameObject found = GameObject.Find(name);
-
-                if (found != null)
-                    return found;
-            }
-
-            // Fallback search for an object containing
-            // "wardrobe" in its name.
-            GameObject[] allObjects =
-                FindObjectsOfType<GameObject>();
-
-            foreach (GameObject obj in allObjects)
-            {
-                if (obj == null)
-                    continue;
-
-                string objectName =
-                    obj.name.ToLower();
-
-                if (objectName.Contains("wardrobe"))
-                    return obj;
-            }
-
-            return null;
-        }
-
-        private void CreateClock(Transform wardrobe)
-        {
+            // Create the clock.
             clockObject =
-                new GameObject("GorillaTagClock_Local");
+                GameObject.CreatePrimitive(
+                    PrimitiveType.Cube
+                );
 
-            // Keep the clock attached to the wardrobe.
+            clockObject.name =
+                "GorillaTagClock_Local";
+
+            // Put it directly in front of the
+            // player's camera.
             clockObject.transform.SetParent(
-                wardrobe,
+                cam.transform,
                 false
             );
 
             clockObject.transform.localPosition =
-                clockPosition;
+                new Vector3(
+                    0f,
+                    0f,
+                    1.5f
+                );
 
             clockObject.transform.localRotation =
                 Quaternion.identity;
 
             clockObject.transform.localScale =
-                Vector3.one * 0.0025f;
+                new Vector3(
+                    0.7f,
+                    0.35f,
+                    0.08f
+                );
 
-            // -------------------------
-            // World-space Canvas
-            // -------------------------
+            Renderer renderer =
+                clockObject.GetComponent<Renderer>();
 
-            Canvas canvas =
-                clockObject.AddComponent<Canvas>();
+            renderer.material =
+                CreateMaterial(
+                    new Color(
+                        0.01f,
+                        0.01f,
+                        0.01f
+                    )
+                );
 
-            canvas.renderMode =
-                RenderMode.WorldSpace;
+            Collider collider =
+                clockObject.GetComponent<Collider>();
 
-            CanvasScaler scaler =
-                clockObject.AddComponent<CanvasScaler>();
+            if (collider != null)
+                Destroy(collider);
 
-            scaler.dynamicPixelsPerUnit = 10f;
+            CreateDisplay();
 
-            clockObject.AddComponent<GraphicRaycaster>();
+            CreateClockText();
 
-            // -------------------------
-            // Background
-            // -------------------------
+            UpdateClock();
 
-            GameObject backgroundObject =
-                new GameObject("ClockBackground");
+            Logger.LogInfo(
+                "[GorillaTagClock] CLOCK CREATED SUCCESSFULLY"
+            );
+        }
 
-            backgroundObject.transform.SetParent(
+        private void CreateDisplay()
+        {
+            GameObject display =
+                GameObject.CreatePrimitive(
+                    PrimitiveType.Cube
+                );
+
+            display.name =
+                "ClockDisplay";
+
+            display.transform.SetParent(
                 clockObject.transform,
                 false
             );
 
-            Image background =
-                backgroundObject.AddComponent<Image>();
+            display.transform.localPosition =
+                new Vector3(
+                    0f,
+                    0f,
+                    -0.041f
+                );
 
-            background.color =
-                new Color(0f, 0f, 0f, 0.75f);
+            display.transform.localScale =
+                new Vector3(
+                    0.9f,
+                    0.75f,
+                    0.02f
+                );
 
-            RectTransform backgroundRect =
-                backgroundObject.GetComponent<RectTransform>();
+            Renderer renderer =
+                display.GetComponent<Renderer>();
 
-            backgroundRect.sizeDelta =
-                new Vector2(420f, 110f);
+            renderer.material =
+                CreateMaterial(
+                    new Color(
+                        0.005f,
+                        0.02f,
+                        0.025f
+                    )
+                );
 
-            backgroundRect.localPosition =
-                Vector3.zero;
+            Collider collider =
+                display.GetComponent<Collider>();
 
-            // -------------------------
-            // Clock Text
-            // -------------------------
+            if (collider != null)
+                Destroy(collider);
+        }
 
+        private void CreateClockText()
+        {
             GameObject textObject =
-                new GameObject("ClockText");
+                new GameObject(
+                    "ClockTime"
+                );
 
             textObject.transform.SetParent(
                 clockObject.transform,
                 false
             );
+
+            textObject.transform.localPosition =
+                new Vector3(
+                    0f,
+                    0f,
+                    -0.06f
+                );
+
+            Canvas canvas =
+                textObject.AddComponent<Canvas>();
+
+            canvas.renderMode =
+                RenderMode.WorldSpace;
+
+            CanvasScaler scaler =
+                textObject.AddComponent<CanvasScaler>();
+
+            scaler.dynamicPixelsPerUnit =
+                100f;
 
             clockText =
                 textObject.AddComponent<Text>();
@@ -184,13 +205,23 @@ namespace GorillaTagClock
                     "Arial.ttf"
                 );
 
-            clockText.fontSize = 55;
+            clockText.fontSize = 80;
+
+            clockText.fontStyle =
+                FontStyle.Bold;
 
             clockText.alignment =
                 TextAnchor.MiddleCenter;
 
             clockText.color =
-                Color.white;
+                new Color(
+                    0.4f,
+                    1f,
+                    1f
+                );
+
+            clockText.raycastTarget =
+                false;
 
             clockText.horizontalOverflow =
                 HorizontalWrapMode.Overflow;
@@ -198,21 +229,36 @@ namespace GorillaTagClock
             clockText.verticalOverflow =
                 VerticalWrapMode.Overflow;
 
-            RectTransform textRect =
+            RectTransform rect =
                 textObject.GetComponent<RectTransform>();
 
-            textRect.sizeDelta =
-                new Vector2(420f, 110f);
+            rect.sizeDelta =
+                new Vector2(
+                    500f,
+                    180f
+                );
+        }
 
-            textRect.localPosition =
-                Vector3.zero;
+        private Material CreateMaterial(
+            Color color
+        )
+        {
+            Shader shader =
+                Shader.Find("Standard");
 
-            // Immediately show the user's local time.
-            UpdateClock();
+            if (shader == null)
+            {
+                shader =
+                    Shader.Find("Unlit/Color");
+            }
 
-            Logger.LogInfo(
-                "GorillaTagClock: Local clock created."
-            );
+            Material material =
+                new Material(shader);
+
+            material.color =
+                color;
+
+            return material;
         }
 
         private void Update()
@@ -220,13 +266,12 @@ namespace GorillaTagClock
             if (clockText == null)
                 return;
 
-            updateTimer += Time.deltaTime;
+            timer += Time.deltaTime;
 
-            if (updateTimer >= 1f)
+            if (timer >= 1f)
             {
-                updateTimer = 0f;
+                timer = 0f;
 
-                // Updates using the local computer time.
                 UpdateClock();
             }
         }
@@ -236,14 +281,15 @@ namespace GorillaTagClock
             if (clockText == null)
                 return;
 
-            // DateTime.Now gets the LOCAL time of
-            // the computer running Gorilla Tag.
-            DateTime localTime = DateTime.Now;
+            // This is the LOCAL time of the
+            // computer running Gorilla Tag.
+            DateTime localTime =
+                DateTime.Now;
 
-            // Example:
-            // 8:55:32 PM
             clockText.text =
-                localTime.ToString("h:mm:ss tt");
+                localTime.ToString(
+                    "h:mm:ss tt"
+                );
         }
 
         private void OnDestroy()
@@ -251,11 +297,10 @@ namespace GorillaTagClock
             if (clockObject != null)
             {
                 Destroy(clockObject);
-
                 clockObject = null;
-                clockText = null;
             }
+
+            clockText = null;
         }
     }
 }
-```
