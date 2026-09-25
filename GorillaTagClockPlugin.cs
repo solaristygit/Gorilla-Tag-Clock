@@ -1,128 +1,73 @@
 using System;
 using System.Collections;
+using System.IO;
 using BepInEx;
-using GorillaNetworking;
 using UnityEngine;
 using UnityEngine.UI;
+using GorillaNetworking;
 
 namespace GorillaTagClock
 {
     [BepInPlugin(
         "com.gorillatagclock.localclock",
         "GorillaTagClock",
-        "1.0.0"
+        "1.1.0"
     )]
     public class GorillaTagClockPlugin : BaseUnityPlugin
     {
-        private const string BundleName =
-            "gorillatagclock";
-
-        private const string ClockAssetName =
-            "GorillaTagClock";
-
+        private AssetBundle bundle;
         private GameObject clock;
-
         private Text timeText;
 
-        private float updateTimer;
-
-        private bool loaded;
-
-        // =====================================================
-        // CLOCK POSITION
-        // =====================================================
-
-        /*
-         * These are LOCAL coordinates relative to the
-         * cosmetics anchor.
-         *
-         * X = left/right
-         * Y = up/down
-         * Z = forward/back
-         */
-
-        private readonly Vector3 clockPosition =
-            new Vector3(
-                0.65f,
-                0.35f,
-                -0.25f
-            );
-
-        private readonly Vector3 clockRotation =
-            new Vector3(
-                0f,
-                0f,
-                0f
-            );
-
-        private readonly Vector3 clockScale =
-            new Vector3(
-                0.25f,
-                0.25f,
-                0.25f
-            );
-
-        // =====================================================
-        // STARTUP
-        // =====================================================
+        private float timer;
 
         private void Awake()
         {
             Logger.LogInfo(
-                "[GorillaTagClock] Loading..."
+                "[GorillaTagClock] Plugin loaded!"
             );
 
-            StartCoroutine(
-                LoadClock()
-            );
+            StartCoroutine(LoadClock());
         }
-
-        // =====================================================
-        // LOAD ASSETBUNDLE
-        // =====================================================
 
         private IEnumerator LoadClock()
         {
-            string bundlePath =
-                System.IO.Path.Combine(
-                    Paths.PluginPath,
-                    "GorillaTagClock",
-                    BundleName
-                );
-
-            Logger.LogInfo(
-                "[GorillaTagClock] Bundle path: " +
-                bundlePath
+            string path = Path.Combine(
+                Paths.PluginPath,
+                "GorillaTagClock",
+                "gorillatagclock"
             );
 
-            if (!System.IO.File.Exists(bundlePath))
+            Logger.LogInfo(
+                "[GorillaTagClock] Looking for bundle:"
+            );
+
+            Logger.LogInfo(path);
+
+            if (!File.Exists(path))
             {
                 Logger.LogError(
-                    "[GorillaTagClock] AssetBundle not found!"
-                );
-
-                Logger.LogError(
-                    "[GorillaTagClock] Expected: " +
-                    bundlePath
+                    "[GorillaTagClock] BUNDLE DOES NOT EXIST!"
                 );
 
                 yield break;
             }
 
+            Logger.LogInfo(
+                "[GorillaTagClock] Bundle found."
+            );
+
             AssetBundleCreateRequest request =
-                AssetBundle.LoadFromFileAsync(
-                    bundlePath
-                );
+                AssetBundle.LoadFromFileAsync(path);
 
             yield return request;
 
-            AssetBundle bundle =
-                request.assetBundle;
+            bundle = request.assetBundle;
 
             if (bundle == null)
             {
                 Logger.LogError(
-                    "[GorillaTagClock] Failed to load AssetBundle."
+                    "[GorillaTagClock] AssetBundle failed to load!"
                 );
 
                 yield break;
@@ -132,82 +77,111 @@ namespace GorillaTagClock
                 "[GorillaTagClock] AssetBundle loaded."
             );
 
-            AssetBundleRequest assetRequest =
-                bundle.LoadAssetAsync<GameObject>(
-                    ClockAssetName
+            string[] assets =
+                bundle.GetAllAssetNames();
+
+            Logger.LogInfo(
+                "[GorillaTagClock] Assets in bundle: "
+                + assets.Length
+            );
+
+            foreach (string asset in assets)
+            {
+                Logger.LogInfo(
+                    "[GorillaTagClock] Asset: "
+                    + asset
                 );
+            }
 
-            yield return assetRequest;
+            GameObject prefab = null;
 
-            GameObject prefab =
-                assetRequest.asset as GameObject;
+            foreach (string assetName in assets)
+            {
+                AssetBundleRequest assetRequest =
+                    bundle.LoadAssetAsync<GameObject>(
+                        assetName
+                    );
+
+                yield return assetRequest;
+
+                GameObject found =
+                    assetRequest.asset as GameObject;
+
+                if (found != null)
+                {
+                    prefab = found;
+
+                    Logger.LogInfo(
+                        "[GorillaTagClock] Found clock asset: "
+                        + assetName
+                    );
+
+                    break;
+                }
+            }
 
             if (prefab == null)
             {
                 Logger.LogError(
-                    "[GorillaTagClock] Clock prefab not found."
+                    "[GorillaTagClock] NO GAMEOBJECT FOUND IN BUNDLE!"
                 );
-
-                bundle.Unload(false);
 
                 yield break;
             }
 
+            StartCoroutine(
+                WaitForCosmetics(prefab)
+            );
+        }
+
+        private IEnumerator WaitForCosmetics(
+            GameObject prefab
+        )
+        {
             Logger.LogInfo(
-                "[GorillaTagClock] Clock model loaded."
+                "[GorillaTagClock] Waiting for CosmeticsController..."
             );
 
-            // Keep the bundle loaded because the instantiated
-            // object uses assets from it.
-            CreateClock(prefab);
-        }
-
-        // =====================================================
-        // FIND COSMETICS
-        // =====================================================
-
-        private Transform FindCosmeticsAnchor()
-        {
-            if (CosmeticsController.instance != null)
+            while (
+                CosmeticsController.instance == null
+            )
             {
-                Transform controller =
-                    CosmeticsController.instance.transform;
-
-                return controller;
+                yield return new WaitForSeconds(1f);
             }
 
-            return null;
+            Logger.LogInfo(
+                "[GorillaTagClock] CosmeticsController found!"
+            );
+
+            Transform anchor =
+                CosmeticsController.instance.transform;
+
+            if (anchor == null)
+            {
+                Logger.LogError(
+                    "[GorillaTagClock] Cosmetics transform is null!"
+                );
+
+                yield break;
+            }
+
+            CreateClock(
+                prefab,
+                anchor
+            );
         }
 
-        // =====================================================
-        // CREATE CLOCK
-        // =====================================================
-
         private void CreateClock(
-            GameObject prefab
+            GameObject prefab,
+            Transform anchor
         )
         {
             if (clock != null)
                 return;
 
-            Transform anchor =
-                FindCosmeticsAnchor();
-
-            if (anchor == null)
-            {
-                Logger.LogInfo(
-                    "[GorillaTagClock] Waiting for cosmetics..."
-                );
-
-                StartCoroutine(
-                    WaitForCosmetics(prefab)
-                );
-
-                return;
-            }
-
-            clock =
-                Instantiate(prefab);
+            clock = Instantiate(
+                prefab
+            );
 
             clock.name =
                 "GorillaTagClock_Local";
@@ -217,49 +191,38 @@ namespace GorillaTagClock
                 false
             );
 
-            clock.transform.localPosition =
-                clockPosition;
+            /*
+             * START HERE.
+             *
+             * We can adjust these once we know the
+             * clock is successfully appearing.
+             */
 
-            clock.transform.localRotation =
-                Quaternion.Euler(
-                    clockRotation
+            clock.transform.localPosition =
+                new Vector3(
+                    0.8f,
+                    0.5f,
+                    0f
                 );
 
+            clock.transform.localRotation =
+                Quaternion.identity;
+
             clock.transform.localScale =
-                clockScale;
+                Vector3.one * 0.25f;
 
-            AddLocalClockDisplay();
-
-            loaded = true;
+            AddTimeDisplay();
 
             Logger.LogInfo(
-                "[GorillaTagClock] Clock placed beside cosmetics."
+                "[GorillaTagClock] CLOCK CREATED!"
             );
         }
 
-        private IEnumerator WaitForCosmetics(
-            GameObject prefab
-        )
-        {
-            while (
-                CosmeticsController.instance == null
-            )
-            {
-                yield return null;
-            }
-
-            CreateClock(prefab);
-        }
-
-        // =====================================================
-        // LOCAL DIGITAL DISPLAY
-        // =====================================================
-
-        private void AddLocalClockDisplay()
+        private void AddTimeDisplay()
         {
             GameObject display =
                 new GameObject(
-                    "LocalTimeDisplay"
+                    "ClockTime"
                 );
 
             display.transform.SetParent(
@@ -267,26 +230,12 @@ namespace GorillaTagClock
                 false
             );
 
-            /*
-             * You may need to adjust this depending on the
-             * exact orientation of the FBX.
-             *
-             * The display is deliberately a child of the
-             * physical clock model.
-             */
-
             display.transform.localPosition =
                 new Vector3(
                     0f,
-                    0.15f,
-                    -0.35f
+                    0.1f,
+                    -0.3f
                 );
-
-            display.transform.localRotation =
-                Quaternion.identity;
-
-            display.transform.localScale =
-                Vector3.one * 0.002f;
 
             Canvas canvas =
                 display.AddComponent<Canvas>();
@@ -294,11 +243,7 @@ namespace GorillaTagClock
             canvas.renderMode =
                 RenderMode.WorldSpace;
 
-            CanvasScaler scaler =
-                display.AddComponent<CanvasScaler>();
-
-            scaler.dynamicPixelsPerUnit =
-                100f;
+            display.AddComponent<CanvasScaler>();
 
             timeText =
                 display.AddComponent<Text>();
@@ -308,21 +253,16 @@ namespace GorillaTagClock
                     "Arial.ttf"
                 );
 
-            timeText.fontSize =
-                70;
-
-            timeText.fontStyle =
-                FontStyle.Bold;
+            timeText.fontSize = 80;
 
             timeText.alignment =
                 TextAnchor.MiddleCenter;
 
+            timeText.fontStyle =
+                FontStyle.Bold;
+
             timeText.color =
-                new Color(
-                    0.7f,
-                    1f,
-                    1f
-                );
+                Color.white;
 
             timeText.raycastTarget =
                 false;
@@ -336,28 +276,22 @@ namespace GorillaTagClock
                     150f
                 );
 
+            display.transform.localScale =
+                Vector3.one * 0.002f;
+
             UpdateTime();
         }
 
-        // =====================================================
-        // LOCAL TIME
-        // =====================================================
-
         private void Update()
         {
-            if (!loaded)
-                return;
-
             if (timeText == null)
                 return;
 
-            updateTimer +=
-                Time.deltaTime;
+            timer += Time.deltaTime;
 
-            if (updateTimer >= 1f)
+            if (timer >= 1f)
             {
-                updateTimer = 0f;
-
+                timer = 0f;
                 UpdateTime();
             }
         }
@@ -367,29 +301,19 @@ namespace GorillaTagClock
             if (timeText == null)
                 return;
 
-            DateTime localTime =
-                DateTime.Now;
-
             timeText.text =
-                localTime.ToString(
+                DateTime.Now.ToString(
                     "h:mm:ss tt"
                 );
         }
 
-        // =====================================================
-        // CLEANUP
-        // =====================================================
-
         private void OnDestroy()
         {
             if (clock != null)
-            {
                 Destroy(clock);
 
-                clock = null;
-            }
-
-            timeText = null;
+            if (bundle != null)
+                bundle.Unload(false);
         }
     }
 }
