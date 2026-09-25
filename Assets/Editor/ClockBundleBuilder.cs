@@ -1,63 +1,30 @@
 #if UNITY_EDITOR
 
 using UnityEditor;
-using UnityEngine;
 using System.IO;
 
 public static class ClockBundleBuilder
 {
     [MenuItem("GorillaTagClock/Build Clock Bundle")]
-    public static void BuildClockBundle()
+    public static void Build()
     {
-        string outputDirectory =
+        string output =
             Path.Combine(
-                Directory.GetParent(Application.dataPath).FullName,
+                Directory.GetParent(UnityEngine.Application.dataPath).FullName,
                 "Build"
             );
 
-        if (!Directory.Exists(outputDirectory))
-            Directory.CreateDirectory(outputDirectory);
-
-        GameObject clock =
-            AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/Clock/GorillaTagClock.fbx"
-            );
-
-        if (clock == null)
-        {
-            Debug.LogError(
-                "[GorillaTagClock] Could not find " +
-                "Assets/Clock/GorillaTagClock.fbx"
-            );
-
-            return;
-        }
-
-        AssetBundleBuild build =
-            new AssetBundleBuild();
-
-        build.assetBundleName =
-            "gorillatagclock";
-
-        build.assetNames =
-            new[]
-            {
-                "Assets/Clock/GorillaTagClock.fbx"
-            };
+        if (!Directory.Exists(output))
+            Directory.CreateDirectory(output);
 
         BuildPipeline.BuildAssetBundles(
-            outputDirectory,
-            new[]
-            {
-                build
-            },
+            output,
             BuildAssetBundleOptions.None,
             BuildTarget.StandaloneWindows64
         );
 
-        Debug.Log(
-            "[GorillaTagClock] AssetBundle built at: " +
-            outputDirectory
+        UnityEngine.Debug.Log(
+            "[GorillaTagClock] Bundle built!"
         );
     }
 }
